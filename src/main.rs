@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
-
+mod echo;
 /// Helper function: Handles the messy parts of printing prompts and flushing buffers
 fn get_input(prompt: &str) -> io::Result<String> {
     print!("{}", prompt);
@@ -15,20 +15,27 @@ fn get_input(prompt: &str) -> io::Result<String> {
 
 fn main() -> io::Result<()> {
     loop {
-        let command = match get_input("$ ") {
+        let input_string = match get_input("$ ") {
             Ok(input) => input,
             Err(e) => {
                 eprintln!("Error reading input: {}", e);
                 continue;
             }
         };
-        // 2. Handle empty input (user just hit Enter)
-        if command.is_empty() {
+        // Handle empty input
+        if input_string.is_empty() {
             continue;
         };
-        match command.as_str() {
+        let mut parts = input_string.trim().split_whitespace();
+        let command = match parts.next() {
+            Some(cmd) => cmd,
+            None => continue,
+        };
+        let args: Vec<&str> = parts.collect();
+
+        match command {
             "exit" => break,
-            "hi" => println!("Hello there!"), // Easy to add new commands
+            "echo" => echo::echo(args),
             unknown => println!("{}: command not found", unknown),
         }
     }
