@@ -26,7 +26,7 @@ fn main() -> io::Result<()> {
         if input_string.is_empty() {
             continue;
         };
-        let mut parts = input_string.trim().split_whitespace();
+        let mut parts = input_string.split_whitespace();
         let command = match parts.next() {
             Some(cmd) => cmd,
             None => continue,
@@ -35,7 +35,8 @@ fn main() -> io::Result<()> {
 
         match command {
             "exit" => break,
-            "echo" => echo::echo(args),
+            "echo" => echo::echo_cmd(args),
+            "type" => echo::type_cmd(args),
             unknown => println!("{}: command not found", unknown),
         }
     }
