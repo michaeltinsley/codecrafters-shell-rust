@@ -1,6 +1,9 @@
-#[allow(unused_imports)]
-use std::io::{self, Write};
-mod echo;
+use codecrafters_shell::{Builtin, ShellStatus};
+use std::{
+    io::{self, Write},
+    process,
+};
+
 /// Helper function: Handles the messy parts of printing prompts and flushing buffers
 fn get_input(prompt: &str) -> io::Result<String> {
     print!("{}", prompt);
@@ -27,18 +30,21 @@ fn main() -> io::Result<()> {
             continue;
         };
         let mut parts = input_string.split_whitespace();
-        let command = match parts.next() {
+        let command_str = match parts.next() {
             Some(cmd) => cmd,
             None => continue,
         };
         let args: Vec<&str> = parts.collect();
 
-        match command {
-            "exit" => break,
-            "echo" => echo::echo_cmd(args),
-            "type" => echo::type_cmd(args),
-            unknown => println!("{}: command not found", unknown),
+        match command_str.parse::<Builtin>() {
+            Ok(builtin) => match builtin.execute(args) {
+                ShellStatus::Exit(code) => process::exit(code),
+                ShellStatus::Continue => continue,
+            },
+            Err(_) => {
+                // It's not a builtin, treat it as an external command
+                println!("{}: command not found", command_str);
+            }
         }
     }
-    Ok(())
 }
