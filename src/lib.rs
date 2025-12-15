@@ -25,8 +25,8 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
     match command.parse::<Builtin>() {
         Ok(builtin) => builtin.execute(args),
         Err(_) => {
-            if let Some(path) = get_executable_path(command) {
-                let output = Command::new(path).args(args).spawn();
+            if get_executable_path(command).is_some() {
+                let output = Command::new(command).args(args).spawn();
 
                 match output {
                     Ok(mut child) => {
@@ -51,12 +51,11 @@ pub(crate) fn get_executable_path(command: &str) -> Option<PathBuf> {
     for path in env::split_paths(&path_var) {
         let full_path = path.join(command);
 
-        if full_path.is_file() {
-            if let Ok(metadata) = full_path.metadata() {
-                if metadata.permissions().mode() & 0o111 != 0 {
-                    return Some(command.into());
-                }
-            }
+        if full_path.is_file()
+            && let Ok(metadata) = full_path.metadata()
+            && metadata.permissions().mode() & 0o111 != 0
+        {
+            return Some(full_path);
         }
     }
     None
