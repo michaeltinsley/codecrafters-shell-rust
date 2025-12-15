@@ -1,4 +1,4 @@
-use codecrafters_shell::{Builtin, ShellStatus};
+use codecrafters_shell::ShellStatus;
 use std::{
     io::{self, Write},
     process,
@@ -36,15 +36,10 @@ fn main() -> io::Result<()> {
         };
         let args: Vec<&str> = parts.collect();
 
-        match command_str.parse::<Builtin>() {
-            Ok(builtin) => match builtin.execute(args) {
-                ShellStatus::Exit(code) => process::exit(code),
-                ShellStatus::Continue => continue,
-            },
-            Err(_) => {
-                // It's not a builtin, treat it as an external command
-                println!("{}: command not found", command_str);
-            }
+        // Delegate execution logic to the library
+        match codecrafters_shell::handle_command(command_str, args) {
+            ShellStatus::Exit(code) => process::exit(code),
+            ShellStatus::Continue => continue,
         }
     }
 }

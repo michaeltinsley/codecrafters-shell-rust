@@ -1,6 +1,7 @@
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
 
 pub enum ShellStatus {
@@ -86,4 +87,27 @@ fn get_executable_path(command: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+pub fn handle_command(command: &str, args: Vec<&str>) -> ShellStatus {
+    match command.parse::<Builtin>() {
+        Ok(builtin) => builtin.execute(args),
+        Err(_) => {
+            // Requirement: Search in PATH (just like 'type' does)
+            if let Some(path) = get_executable_path(command) {
+                let output = Command::new(path).args(args).spawn();
+
+                match output {
+                    Ok(mut child) => {
+                        child.wait().unwrap();
+                    }
+                    Err(e) => println!("{}: error executing command: {}", command, e),
+                }
+            } else {
+                // If get_executable_path returns None, it's not in PATH
+                println!("{}: command not found", command);
+            }
+            ShellStatus::Continue
+        }
+    }
 }
