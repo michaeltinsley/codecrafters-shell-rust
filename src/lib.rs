@@ -54,7 +54,7 @@ pub(crate) fn get_executable_path(command: &str) -> Option<PathBuf> {
         if full_path.is_file() {
             if let Ok(metadata) = full_path.metadata() {
                 if metadata.permissions().mode() & 0o111 != 0 {
-                    return Some(full_path);
+                    return Some(command.into());
                 }
             }
         }
