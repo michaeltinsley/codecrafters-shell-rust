@@ -29,15 +29,15 @@ fn main() -> io::Result<()> {
         if input_string.is_empty() {
             continue;
         };
-        let mut parts = input_string.split_whitespace();
+        let mut parts = codecrafters_shell::tokenize(&input_string).into_iter();
         let command_str = match parts.next() {
             Some(cmd) => cmd,
             None => continue,
         };
-        let args: Vec<&str> = parts.collect();
+        let args: Vec<String> = parts.collect();
 
         // Delegate execution logic to the library
-        match codecrafters_shell::handle_command(command_str, args) {
+        match codecrafters_shell::handle_command(&command_str, args) {
             ShellStatus::Exit(code) => process::exit(code),
             ShellStatus::Continue => continue,
         }
