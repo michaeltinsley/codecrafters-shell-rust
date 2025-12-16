@@ -8,6 +8,7 @@ pub enum Builtin {
     Echo,
     Type,
     Pwd,
+    Cd,
 }
 
 impl FromStr for Builtin {
@@ -19,6 +20,7 @@ impl FromStr for Builtin {
             "echo" => Ok(Builtin::Echo),
             "type" => Ok(Builtin::Type),
             "pwd" => Ok(Builtin::Pwd),
+            "cd" => Ok(Builtin::Cd),
             _ => Err(()),
         }
     }
@@ -54,6 +56,14 @@ impl Builtin {
                     Err(e) => {
                         eprintln!("pwd: error retrieving current directory: {}", e);
                     }
+                }
+                ShellStatus::Continue
+            }
+            Builtin::Cd => {
+                if let Some(path) = args.first()
+                    && std::env::set_current_dir(path).is_err()
+                {
+                    println!("cd: {}: No such file or directory", path);
                 }
                 ShellStatus::Continue
             }
