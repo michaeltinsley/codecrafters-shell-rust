@@ -7,6 +7,7 @@ pub enum Builtin {
     Exit,
     Echo,
     Type,
+    Pwd,
 }
 
 impl FromStr for Builtin {
@@ -17,6 +18,7 @@ impl FromStr for Builtin {
             "exit" => Ok(Builtin::Exit),
             "echo" => Ok(Builtin::Echo),
             "type" => Ok(Builtin::Type),
+            "pwd" => Ok(Builtin::Pwd),
             _ => Err(()),
         }
     }
@@ -42,6 +44,17 @@ impl Builtin {
             }
             Builtin::Type => {
                 type_cmd(args);
+                ShellStatus::Continue
+            }
+            Builtin::Pwd => {
+                match std::env::current_dir() {
+                    Ok(path) => {
+                        println!("{}", path.display());
+                    }
+                    Err(e) => {
+                        eprintln!("pwd: error retrieving current directory: {}", e);
+                    }
+                }
                 ShellStatus::Continue
             }
         }
