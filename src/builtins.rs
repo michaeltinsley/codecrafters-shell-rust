@@ -60,10 +60,22 @@ impl Builtin {
                 ShellStatus::Continue
             }
             Builtin::Cd => {
-                if let Some(path) = args.first()
-                    && std::env::set_current_dir(path).is_err()
-                {
-                    println!("cd: {}: No such file or directory", path);
+                if let Some(path) = args.first() {
+                    let new_dir = if path == "~" {
+                        match std::env::var("HOME") {
+                            Ok(val) => val,
+                            Err(_) => {
+                                eprintln!("cd: HOME not set");
+                                return ShellStatus::Continue;
+                            }
+                        }
+                    } else {
+                        path.clone()
+                    };
+
+                    if std::env::set_current_dir(&new_dir).is_err() {
+                        eprintln!("cd: no such file or directory: {}", new_dir);
+                    }
                 }
                 ShellStatus::Continue
             }
