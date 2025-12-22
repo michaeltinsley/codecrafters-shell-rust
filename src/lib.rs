@@ -29,36 +29,40 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
     let mut args_iter = args.into_iter();
 
     while let Some(arg) = args_iter.next() {
-        if arg == ">" || arg == "1>" {
-            if let Some(filename) = args_iter.next() {
-                stdout_file = Some(File::create(filename).unwrap());
+        match arg.as_str() {
+            ">" | "1>" => {
+                if let Some(filename) = args_iter.next() {
+                    stdout_file = Some(File::create(filename).unwrap());
+                }
             }
-        } else if arg == ">>" || arg == "1>>" {
-            if let Some(filename) = args_iter.next() {
-                stdout_file = Some(
-                    OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(filename)
-                        .unwrap(),
-                );
+            ">>" | "1>>" => {
+                if let Some(filename) = args_iter.next() {
+                    stdout_file = Some(
+                        OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(filename)
+                            .unwrap(),
+                    );
+                }
             }
-        } else if arg == "2>" {
-            if let Some(filename) = args_iter.next() {
-                stderr_file = Some(File::create(filename).unwrap());
+            "2>" => {
+                if let Some(filename) = args_iter.next() {
+                    stderr_file = Some(File::create(filename).unwrap());
+                }
             }
-        } else if arg == "2>>" {
-            if let Some(filename) = args_iter.next() {
-                stderr_file = Some(
-                    OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(filename)
-                        .unwrap(),
-                );
+            "2>>" => {
+                if let Some(filename) = args_iter.next() {
+                    stderr_file = Some(
+                        OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(filename)
+                            .unwrap(),
+                    );
+                }
             }
-        } else {
-            clean_args.push(arg);
+            _ => clean_args.push(arg),
         }
     }
 
