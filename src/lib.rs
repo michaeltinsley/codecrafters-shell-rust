@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -32,6 +32,16 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
         if arg == ">" || arg == "1>" {
             if let Some(filename) = args_iter.next() {
                 stdout_file = Some(File::create(filename).unwrap());
+            }
+        } else if arg == ">>" || arg == "1>>" {
+            if let Some(filename) = args_iter.next() {
+                stdout_file = Some(
+                    OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(filename)
+                        .unwrap(),
+                );
             }
         } else if arg == "2>" {
             if let Some(filename) = args_iter.next() {
