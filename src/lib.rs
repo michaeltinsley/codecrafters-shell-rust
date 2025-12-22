@@ -49,7 +49,7 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
             }
         } else if arg == "2>>" {
             if let Some(filename) = args_iter.next() {
-                stdout_file = Some(
+                stderr_file = Some(
                     OpenOptions::new()
                         .create(true)
                         .append(true)
