@@ -1,7 +1,8 @@
 use std::env;
+use std::fs::File;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub mod builtins;
 pub mod parser;
@@ -22,20 +23,48 @@ pub enum ShellStatus {
 /// It first attempts to parse the command as a `Builtin`. If that fails,
 /// it searches for an external executable in the `PATH` and runs it.
 pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
+    let mut clean_args = Vec::new();
+    let mut output_file: Option<File> = None;
+    let mut args_iter = args.into_iter();
+
+    while let Some(arg) = args_iter.next() {
+        if arg == ">" || arg == "1>" {
+            if let Some(filename) = args_iter.next() {
+                output_file = Some(File::create(filename).unwrap());
+            }
+        } else {
+            clean_args.push(arg);
+        }
+    }
+
     match command.parse::<Builtin>() {
-        Ok(builtin) => builtin.execute(args),
+        Ok(builtin) => {
+            let mut writer: Box<dyn std::io::Write> = match output_file {
+                Some(f) => Box::new(f),
+                None => Box::new(std::io::stdout()),
+            };
+            builtin.execute(clean_args, &mut *writer)
+        }
         Err(_) => {
             if get_executable_path(command).is_some() {
-                let output = Command::new(command).args(args).spawn();
+                let stdout = match output_file {
+                    Some(f) => Stdio::from(f),
+                    None => Stdio::inherit(),
+                };
+
+                let output = Command::new(command)
+                    .args(clean_args)
+                    .stdout(stdout)
+                    .spawn();
 
                 match output {
                     Ok(mut child) => {
                         child.wait().unwrap();
                     }
-                    Err(e) => println!("{}: error executing command: {}", command, e),
+                    Err(e) => eprintln!("{}: error executing command: {}", command, e),
                 }
             } else {
-                println!("{}: command not found", command);
+                eprintln!("{}: command not found", command);
             }
             ShellStatus::Continue
         }

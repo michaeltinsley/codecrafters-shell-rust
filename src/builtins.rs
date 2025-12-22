@@ -1,5 +1,6 @@
 use crate::ShellStatus;
 use crate::get_executable_path;
+use std::io::Write;
 use std::str::FromStr;
 
 /// Enumeration of all supported builtin commands.
@@ -31,7 +32,7 @@ impl Builtin {
     ///
     /// Returns a `ShellStatus` indicating whether the shell should continue
     /// or exit with a specific code.
-    pub fn execute(&self, args: Vec<String>) -> ShellStatus {
+    pub fn execute<W: Write>(&self, args: Vec<String>, mut writer: W) -> ShellStatus {
         match self {
             Builtin::Exit => {
                 let code = args
@@ -41,17 +42,17 @@ impl Builtin {
                 ShellStatus::Exit(code)
             }
             Builtin::Echo => {
-                echo_cmd(args);
+                echo_cmd(args, &mut writer);
                 ShellStatus::Continue
             }
             Builtin::Type => {
-                type_cmd(args);
+                type_cmd(args, &mut writer);
                 ShellStatus::Continue
             }
             Builtin::Pwd => {
                 match std::env::current_dir() {
                     Ok(path) => {
-                        println!("{}", path.display());
+                        let _ = writeln!(writer, "{}", path.display());
                     }
                     Err(e) => {
                         eprintln!("pwd: error retrieving current directory: {}", e);
@@ -86,14 +87,14 @@ impl Builtin {
 /// Implementation of the `echo` command.
 ///
 /// Prints the arguments to stdout, separated by spaces.
-pub fn echo_cmd(args: Vec<String>) {
-    println!("{}", args.join(" "));
+pub fn echo_cmd<W: Write>(args: Vec<String>, writer: &mut W) {
+    let _ = writeln!(writer, "{}", args.join(" "));
 }
 
 /// Implementation of the `type` command.
 ///
 /// Identifies whether a command is a builtin or an executable in the PATH.
-pub fn type_cmd(args: Vec<String>) {
+pub fn type_cmd<W: Write>(args: Vec<String>, writer: &mut W) {
     let command = match args.first() {
         Some(cmd) => cmd,
         None => {
@@ -102,13 +103,17 @@ pub fn type_cmd(args: Vec<String>) {
     };
     // 1. Check if it's a builtin
     if Builtin::from_str(command).is_ok() {
-        println!("{} is a shell builtin", command);
+        let _ = writeln!(writer, "{} is a shell builtin", command);
         return;
     }
 
     // 2. External command check
     match get_executable_path(command) {
-        Some(path) => println!("{} is {}", command, path.display()),
-        None => println!("{}: not found", command),
+        Some(path) => {
+            let _ = writeln!(writer, "{} is {}", command, path.display());
+        }
+        None => {
+            eprintln!("{}: not found", command);
+        }
     }
 }
