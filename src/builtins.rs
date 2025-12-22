@@ -32,7 +32,12 @@ impl Builtin {
     ///
     /// Returns a `ShellStatus` indicating whether the shell should continue
     /// or exit with a specific code.
-    pub fn execute<W: Write>(&self, args: Vec<String>, mut writer: W) -> ShellStatus {
+    pub fn execute<W: Write, E: Write>(
+        &self,
+        args: Vec<String>,
+        mut stdout: W,
+        mut stderr: E,
+    ) -> ShellStatus {
         match self {
             Builtin::Exit => {
                 let code = args
@@ -42,20 +47,20 @@ impl Builtin {
                 ShellStatus::Exit(code)
             }
             Builtin::Echo => {
-                echo_cmd(args, &mut writer);
+                echo_cmd(args, &mut stdout);
                 ShellStatus::Continue
             }
             Builtin::Type => {
-                type_cmd(args, &mut writer);
+                type_cmd(args, &mut stdout, &mut stderr);
                 ShellStatus::Continue
             }
             Builtin::Pwd => {
                 match std::env::current_dir() {
                     Ok(path) => {
-                        let _ = writeln!(writer, "{}", path.display());
+                        let _ = writeln!(stdout, "{}", path.display());
                     }
                     Err(e) => {
-                        eprintln!("pwd: error retrieving current directory: {}", e);
+                        let _ = writeln!(stderr, "pwd: error retrieving current directory: {}", e);
                     }
                 }
                 ShellStatus::Continue
@@ -66,7 +71,7 @@ impl Builtin {
                         match std::env::var("HOME") {
                             Ok(val) => val,
                             Err(_) => {
-                                eprintln!("cd: HOME not set");
+                                let _ = writeln!(stderr, "cd: HOME not set");
                                 return ShellStatus::Continue;
                             }
                         }
@@ -75,7 +80,7 @@ impl Builtin {
                     };
 
                     if std::env::set_current_dir(&new_dir).is_err() {
-                        eprintln!("cd: no such file or directory: {}", new_dir);
+                        let _ = writeln!(stderr, "cd: no such file or directory: {}", new_dir);
                     }
                 }
                 ShellStatus::Continue
@@ -94,7 +99,7 @@ pub fn echo_cmd<W: Write>(args: Vec<String>, writer: &mut W) {
 /// Implementation of the `type` command.
 ///
 /// Identifies whether a command is a builtin or an executable in the PATH.
-pub fn type_cmd<W: Write>(args: Vec<String>, writer: &mut W) {
+pub fn type_cmd<W: Write, E: Write>(args: Vec<String>, stdout: &mut W, stderr: &mut E) {
     let command = match args.first() {
         Some(cmd) => cmd,
         None => {
@@ -103,17 +108,17 @@ pub fn type_cmd<W: Write>(args: Vec<String>, writer: &mut W) {
     };
     // 1. Check if it's a builtin
     if Builtin::from_str(command).is_ok() {
-        let _ = writeln!(writer, "{} is a shell builtin", command);
+        let _ = writeln!(stdout, "{} is a shell builtin", command);
         return;
     }
 
     // 2. External command check
     match get_executable_path(command) {
         Some(path) => {
-            let _ = writeln!(writer, "{} is {}", command, path.display());
+            let _ = writeln!(stdout, "{} is {}", command, path.display());
         }
         None => {
-            eprintln!("{}: not found", command);
+            let _ = writeln!(stderr, "{}: not found", command);
         }
     }
 }

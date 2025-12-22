@@ -24,13 +24,18 @@ pub enum ShellStatus {
 /// it searches for an external executable in the `PATH` and runs it.
 pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
     let mut clean_args = Vec::new();
-    let mut output_file: Option<File> = None;
+    let mut stdout_file: Option<File> = None;
+    let mut stderr_file: Option<File> = None;
     let mut args_iter = args.into_iter();
 
     while let Some(arg) = args_iter.next() {
         if arg == ">" || arg == "1>" {
             if let Some(filename) = args_iter.next() {
-                output_file = Some(File::create(filename).unwrap());
+                stdout_file = Some(File::create(filename).unwrap());
+            }
+        } else if arg == "2>" {
+            if let Some(filename) = args_iter.next() {
+                stderr_file = Some(File::create(filename).unwrap());
             }
         } else {
             clean_args.push(arg);
@@ -39,15 +44,23 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
 
     match command.parse::<Builtin>() {
         Ok(builtin) => {
-            let mut writer: Box<dyn std::io::Write> = match output_file {
+            let mut stdout: Box<dyn std::io::Write> = match stdout_file {
                 Some(f) => Box::new(f),
                 None => Box::new(std::io::stdout()),
             };
-            builtin.execute(clean_args, &mut *writer)
+            let mut stderr: Box<dyn std::io::Write> = match stderr_file {
+                Some(f) => Box::new(f),
+                None => Box::new(std::io::stderr()),
+            };
+            builtin.execute(clean_args, &mut *stdout, &mut *stderr)
         }
         Err(_) => {
             if get_executable_path(command).is_some() {
-                let stdout = match output_file {
+                let stdout = match stdout_file {
+                    Some(f) => Stdio::from(f),
+                    None => Stdio::inherit(),
+                };
+                let stderr = match stderr_file {
                     Some(f) => Stdio::from(f),
                     None => Stdio::inherit(),
                 };
@@ -55,6 +68,7 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
                 let output = Command::new(command)
                     .args(clean_args)
                     .stdout(stdout)
+                    .stderr(stderr)
                     .spawn();
 
                 match output {
