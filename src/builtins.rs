@@ -97,7 +97,7 @@ impl Builtin {
                             Ok(file) => {
                                 let reader = BufReader::new(file);
                                 let mut loaded_history = Vec::new();
-                                for cmd in reader.lines().flatten() {
+                                for cmd in reader.lines().map_while(Result::ok) {
                                     loaded_history.push(cmd);
                                 }
                                 return ShellStatus::LoadHistory(loaded_history);
