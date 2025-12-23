@@ -24,7 +24,7 @@ pub enum ShellStatus {
 ///
 /// It first attempts to parse the command as a `Builtin`. If that fails,
 /// it searches for an external executable in the `PATH` and runs it.
-pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
+pub fn handle_command(command: &str, args: Vec<String>, history: &[String]) -> ShellStatus {
     let mut clean_args = Vec::new();
     let mut stdout_file: Option<File> = None;
     let mut stderr_file: Option<File> = None;
@@ -78,7 +78,7 @@ pub fn handle_command(command: &str, args: Vec<String>) -> ShellStatus {
                 Some(f) => Box::new(f),
                 None => Box::new(std::io::stderr()),
             };
-            builtin.execute(clean_args, &mut *stdout, &mut *stderr)
+            builtin.execute(clean_args, &mut *stdout, &mut *stderr, history)
         }
         Err(_) => {
             if get_executable_path(command).is_some() {
@@ -183,7 +183,7 @@ pub fn execute_pipeline(input: &str) -> ShellStatus {
     if commands.len() == 1 {
         // Single command, no pipeline needed
         let (cmd, args) = &commands[0];
-        return handle_command(cmd, args.clone());
+        return handle_command(cmd, args.clone(), &[]);
     }
 
     // Create pipes for N-1 connections
@@ -334,7 +334,7 @@ fn execute_builtin_in_pipeline(
                 use std::io::{stderr, stdout};
                 let mut out = stdout();
                 let mut err = stderr();
-                match builtin.execute(args, &mut out, &mut err) {
+                match builtin.execute(args, &mut out, &mut err, &[]) {
                     ShellStatus::Exit(code) => std::process::exit(code),
                     ShellStatus::Continue => std::process::exit(0),
                 }

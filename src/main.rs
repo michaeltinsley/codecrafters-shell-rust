@@ -32,6 +32,8 @@ fn longest_common_prefix(strings: &[String]) -> String {
 }
 
 fn main() -> io::Result<()> {
+    let mut command_history: Vec<String> = Vec::new();
+
     loop {
         print!("$ ");
         io::stdout().flush()?;
@@ -164,6 +166,9 @@ fn main() -> io::Result<()> {
             continue;
         }
 
+        // Add to history
+        command_history.push(input_string.clone());
+
         // Check if this is a pipeline command
         if input_string.contains('|') {
             match codecrafters_shell::execute_pipeline(&input_string) {
@@ -179,7 +184,7 @@ fn main() -> io::Result<()> {
         };
         let args: Vec<String> = parts.collect();
 
-        match codecrafters_shell::handle_command(&command_str, args) {
+        match codecrafters_shell::handle_command(&command_str, args, &command_history) {
             ShellStatus::Exit(code) => process::exit(code),
             ShellStatus::Continue => continue,
         }

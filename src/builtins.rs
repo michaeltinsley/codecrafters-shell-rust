@@ -39,6 +39,7 @@ impl Builtin {
         args: Vec<String>,
         mut stdout: W,
         mut stderr: E,
+        history: &[String],
     ) -> ShellStatus {
         match self {
             Builtin::Exit => {
@@ -88,8 +89,10 @@ impl Builtin {
                 ShellStatus::Continue
             }
             Builtin::History => {
-                // History command - for now, just a placeholder
-                // The actual history tracking would be implemented in the main loop
+                // Display command history with line numbers
+                for (i, cmd) in history.iter().enumerate() {
+                    let _ = writeln!(stdout, "{:>5}  {}", i + 1, cmd);
+                }
                 ShellStatus::Continue
             }
         }
