@@ -164,6 +164,14 @@ fn main() -> io::Result<()> {
             continue;
         }
 
+        // Check if this is a pipeline command
+        if input_string.contains('|') {
+            match codecrafters_shell::execute_pipeline(&input_string) {
+                ShellStatus::Exit(code) => process::exit(code),
+                ShellStatus::Continue => continue,
+            }
+        }
+
         let mut parts = codecrafters_shell::tokenize(&input_string).into_iter();
         let command_str = match parts.next() {
             Some(cmd) => cmd,

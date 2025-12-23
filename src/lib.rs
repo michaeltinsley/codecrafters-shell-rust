@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::FromRawFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -152,4 +153,82 @@ pub fn get_all_executables() -> Vec<String> {
     }
 
     executables
+}
+
+/// Executes a pipeline of two commands connected by a pipe.
+///
+/// Takes the full input string, splits it by '|', and executes the two commands
+/// with the first command's stdout connected to the second command's stdin.
+pub fn execute_pipeline(input: &str) -> ShellStatus {
+    let parts: Vec<&str> = input.split('|').map(|s| s.trim()).collect();
+
+    if parts.len() != 2 {
+        eprintln!("Pipeline execution only supports exactly 2 commands");
+        return ShellStatus::Continue;
+    }
+
+    let cmd1_tokens = tokenize(parts[0]);
+    let cmd2_tokens = tokenize(parts[1]);
+
+    if cmd1_tokens.is_empty() || cmd2_tokens.is_empty() {
+        return ShellStatus::Continue;
+    }
+
+    let cmd1 = &cmd1_tokens[0];
+    let args1 = &cmd1_tokens[1..];
+
+    let cmd2 = &cmd2_tokens[0];
+    let args2 = &cmd2_tokens[1..];
+
+    // Create a pipe
+    let (pipe_read_fd, pipe_write_fd) = unsafe {
+        let mut fds = [0; 2];
+        if libc::pipe(fds.as_mut_ptr()) == -1 {
+            eprintln!("Failed to create pipe");
+            return ShellStatus::Continue;
+        }
+        (fds[0], fds[1])
+    };
+
+    // Spawn first command with stdout redirected to pipe write end
+    let mut child1 = match Command::new(cmd1)
+        .args(args1)
+        .stdout(unsafe { Stdio::from_raw_fd(pipe_write_fd) })
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("{}: error executing command: {}", cmd1, e);
+            unsafe {
+                libc::close(pipe_read_fd);
+                libc::close(pipe_write_fd);
+            }
+            return ShellStatus::Continue;
+        }
+    };
+
+    // Spawn second command with stdin redirected from pipe read end
+    let mut child2 = match Command::new(cmd2)
+        .args(args2)
+        .stdin(unsafe { Stdio::from_raw_fd(pipe_read_fd) })
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("{}: error executing command: {}", cmd2, e);
+            unsafe {
+                libc::close(pipe_read_fd);
+            }
+            // Kill first child if second fails to spawn
+            let _ = child1.kill();
+            let _ = child1.wait();
+            return ShellStatus::Continue;
+        }
+    };
+
+    // Wait for both commands to complete
+    let _ = child1.wait();
+    let _ = child2.wait();
+
+    ShellStatus::Continue
 }

@@ -8,5 +8,6 @@ rust-version = "1.91"
 [dependencies]
 anyhow = "1.0.68"                                # error handling
 bytes = "1.3.0"                                  # helps manage buffers
+libc = "0.2"                                     # for pipe system call
 termion = "4.0.6"
 thiserror = "1.0.38"                             # error handling
