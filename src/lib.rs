@@ -156,109 +156,150 @@ pub fn get_all_executables() -> Vec<String> {
     executables
 }
 
-/// Executes a pipeline of two commands connected by a pipe.
+/// Executes a pipeline of N commands connected by pipes.
 ///
-/// Takes the full input string, splits it by '|', and executes the two commands
-/// with the first command's stdout connected to the second command's stdin.
+/// Takes the full input string, splits it by '|', and executes the commands
+/// with each command's stdout connected to the next command's stdin.
 /// Supports both built-in and external commands.
 pub fn execute_pipeline(input: &str) -> ShellStatus {
     let parts: Vec<&str> = input.split('|').map(|s| s.trim()).collect();
 
-    if parts.len() != 2 {
-        eprintln!("Pipeline execution only supports exactly 2 commands");
+    if parts.is_empty() {
         return ShellStatus::Continue;
     }
 
-    let cmd1_tokens = tokenize(parts[0]);
-    let cmd2_tokens = tokenize(parts[1]);
-
-    if cmd1_tokens.is_empty() || cmd2_tokens.is_empty() {
-        return ShellStatus::Continue;
-    }
-
-    let cmd1 = &cmd1_tokens[0];
-    let args1: Vec<String> = cmd1_tokens[1..].to_vec();
-
-    let cmd2 = &cmd2_tokens[0];
-    let args2: Vec<String> = cmd2_tokens[1..].to_vec();
-
-    // Check if commands are built-ins
-    let cmd1_is_builtin = Builtin::from_str(cmd1).is_ok();
-    let cmd2_is_builtin = Builtin::from_str(cmd2).is_ok();
-
-    // Create a pipe
-    let (pipe_read_fd, pipe_write_fd) = unsafe {
-        let mut fds = [0; 2];
-        if libc::pipe(fds.as_mut_ptr()) == -1 {
-            eprintln!("Failed to create pipe");
+    // Parse all commands
+    let mut commands: Vec<(String, Vec<String>)> = Vec::new();
+    for part in &parts {
+        let tokens = tokenize(part);
+        if tokens.is_empty() {
             return ShellStatus::Continue;
         }
-        (fds[0], fds[1])
-    };
+        let cmd = tokens[0].clone();
+        let args = tokens[1..].to_vec();
+        commands.push((cmd, args));
+    }
 
-    // Spawn/execute first command
-    let pid1 = if cmd1_is_builtin {
-        execute_builtin_in_pipeline(cmd1, args1, None, Some(pipe_write_fd))
-    } else {
-        match Command::new(cmd1)
-            .args(&args1)
-            .stdout(unsafe { Stdio::from_raw_fd(pipe_write_fd) })
-            .spawn()
-        {
-            Ok(child) => {
-                // Close pipe_write_fd in parent since child now owns it
-                child.id() as i32
-            }
-            Err(e) => {
-                eprintln!("{}: error executing command: {}", cmd1, e);
-                unsafe {
-                    libc::close(pipe_read_fd);
-                    libc::close(pipe_write_fd);
+    if commands.len() == 1 {
+        // Single command, no pipeline needed
+        let (cmd, args) = &commands[0];
+        return handle_command(cmd, args.clone());
+    }
+
+    // Create pipes for N-1 connections
+    let num_pipes = commands.len() - 1;
+    let mut pipes: Vec<(i32, i32)> = Vec::new();
+
+    for _ in 0..num_pipes {
+        unsafe {
+            let mut fds = [0; 2];
+            if libc::pipe(fds.as_mut_ptr()) == -1 {
+                eprintln!("Failed to create pipe");
+                // Clean up any pipes already created
+                for (read_fd, write_fd) in pipes {
+                    libc::close(read_fd);
+                    libc::close(write_fd);
                 }
                 return ShellStatus::Continue;
             }
+            pipes.push((fds[0], fds[1]));
         }
-    };
+    }
 
-    // Spawn/execute second command
-    let pid2 = if cmd2_is_builtin {
-        execute_builtin_in_pipeline(cmd2, args2, Some(pipe_read_fd), None)
-    } else {
-        match Command::new(cmd2)
-            .args(&args2)
-            .stdin(unsafe { Stdio::from_raw_fd(pipe_read_fd) })
-            .spawn()
-        {
-            Ok(child) => {
-                // Close pipe_read_fd in parent since child now owns it
-                child.id() as i32
-            }
-            Err(e) => {
-                eprintln!("{}: error executing command: {}", cmd2, e);
+    // Spawn all commands
+    let mut pids: Vec<i32> = Vec::new();
+
+    for (i, (cmd, args)) in commands.iter().enumerate() {
+        let is_first = i == 0;
+        let is_last = i == commands.len() - 1;
+        let is_builtin = Builtin::from_str(cmd).is_ok();
+
+        // Determine stdin for this command
+        let stdin_fd = if is_first {
+            None
+        } else {
+            Some(pipes[i - 1].0) // Read from previous pipe
+        };
+
+        // Determine stdout for this command
+        let stdout_fd = if is_last {
+            None
+        } else {
+            Some(pipes[i].1) // Write to next pipe
+        };
+
+        let pid = if is_builtin {
+            execute_builtin_in_pipeline(cmd, args.clone(), stdin_fd, stdout_fd)
+        } else {
+            spawn_external_in_pipeline(cmd, args.clone(), stdin_fd, stdout_fd)
+        };
+
+        if pid < 0 {
+            eprintln!("Failed to spawn command: {}", cmd);
+            // Clean up: kill spawned processes and close pipes
+            for spawned_pid in pids {
                 unsafe {
-                    libc::close(pipe_read_fd);
+                    libc::kill(spawned_pid, libc::SIGKILL);
                 }
-                return ShellStatus::Continue;
             }
+            for (read_fd, write_fd) in pipes {
+                unsafe {
+                    libc::close(read_fd);
+                    libc::close(write_fd);
+                }
+            }
+            return ShellStatus::Continue;
         }
-    };
 
-    // Close pipe fds in parent if not already closed
-    if !cmd1_is_builtin {
-        unsafe { libc::close(pipe_write_fd) };
-    }
-    if !cmd2_is_builtin {
-        unsafe { libc::close(pipe_read_fd) };
+        pids.push(pid);
     }
 
-    // Wait for both processes
-    unsafe {
-        let mut status: i32 = 0;
-        libc::waitpid(pid1, &mut status, 0);
-        libc::waitpid(pid2, &mut status, 0);
+    // Close all pipe fds in parent
+    for (read_fd, write_fd) in pipes {
+        unsafe {
+            libc::close(read_fd);
+            libc::close(write_fd);
+        }
+    }
+
+    // Wait for all processes
+    for pid in pids {
+        unsafe {
+            let mut status: i32 = 0;
+            libc::waitpid(pid, &mut status, 0);
+        }
     }
 
     ShellStatus::Continue
+}
+
+/// Spawns an external command in a pipeline with redirected I/O.
+///
+/// Returns the PID of the spawned child process, or -1 on failure.
+fn spawn_external_in_pipeline(
+    cmd: &str,
+    args: Vec<String>,
+    stdin_fd: Option<i32>,
+    stdout_fd: Option<i32>,
+) -> i32 {
+    let mut command = Command::new(cmd);
+    command.args(&args);
+
+    if let Some(fd) = stdin_fd {
+        command.stdin(unsafe { Stdio::from_raw_fd(fd) });
+    }
+
+    if let Some(fd) = stdout_fd {
+        command.stdout(unsafe { Stdio::from_raw_fd(fd) });
+    }
+
+    match command.spawn() {
+        Ok(child) => child.id() as i32,
+        Err(e) => {
+            eprintln!("{}: error executing command: {}", cmd, e);
+            -1
+        }
+    }
 }
 
 /// Executes a built-in command in a forked child process with redirected I/O.
