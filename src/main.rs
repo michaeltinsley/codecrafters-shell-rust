@@ -45,6 +45,7 @@ fn main() -> io::Result<()> {
         let mut last_was_tab = false;
         let mut last_tab_matches: Vec<String> = Vec::new();
         let mut last_tab_buffer = String::new();
+        let mut history_index: Option<usize> = None;
 
         for c in stdin.keys() {
             match c {
@@ -62,6 +63,69 @@ fn main() -> io::Result<()> {
                     Key::Char('\n') | Key::Char('\r') => {
                         write!(stdout, "\r\n")?;
                         break;
+                    }
+                    Key::Up => {
+                        if !command_history.is_empty() {
+                            // Navigate backwards in history
+                            let new_index = match history_index {
+                                None => command_history.len() - 1,
+                                Some(0) => 0, // Already at oldest
+                                Some(idx) => idx - 1,
+                            };
+
+                            history_index = Some(new_index);
+
+                            // Clear current line
+                            write!(stdout, "\r$ ")?;
+                            for _ in 0..buffer.len() {
+                                write!(stdout, " ")?;
+                            }
+                            write!(stdout, "\r$ ")?;
+
+                            // Load history entry
+                            buffer = command_history[new_index].clone();
+                            write!(stdout, "{}", buffer)?;
+                            stdout.flush()?;
+                        }
+                        last_was_tab = false;
+                    }
+                    Key::Down => {
+                        if let Some(idx) = history_index {
+                            // Navigate forwards in history
+                            let new_index = if idx + 1 >= command_history.len() {
+                                // At newest, clear buffer
+                                history_index = None;
+
+                                // Clear current line
+                                write!(stdout, "\r$ ")?;
+                                for _ in 0..buffer.len() {
+                                    write!(stdout, " ")?;
+                                }
+                                write!(stdout, "\r$ ")?;
+
+                                buffer.clear();
+                                stdout.flush()?;
+                                last_was_tab = false;
+                                continue;
+                            } else {
+                                idx + 1
+                            };
+
+                            history_index = Some(new_index);
+
+                            // Clear current line
+                            write!(stdout, "\r$ ")?;
+                            for _ in 0..buffer.len() {
+                                write!(stdout, " ")?;
+                            }
+                            write!(stdout, "\r$ ")?;
+
+                            // Load history entry
+                            buffer = command_history[new_index].clone();
+                            write!(stdout, "{}", buffer)?;
+                            stdout.flush()?;
+                        }
+                        last_was_tab = false;
                     }
                     Key::Char('\t') => {
                         // Collect all possible completions: builtins and executables
@@ -140,12 +204,14 @@ fn main() -> io::Result<()> {
                             stdout.flush()?;
                         }
                         last_was_tab = false;
+                        history_index = None;
                     }
                     Key::Char(c) => {
                         buffer.push(c);
                         write!(stdout, "{}", c)?;
                         stdout.flush()?;
                         last_was_tab = false;
+                        history_index = None;
                     }
                     _ => {
                         last_was_tab = false;
