@@ -89,9 +89,23 @@ impl Builtin {
                 ShellStatus::Continue
             }
             Builtin::History => {
+                // Parse optional limit argument
+                let limit = args.first().and_then(|n_str| n_str.parse::<usize>().ok());
+
+                // Calculate starting index
+                let start_idx = if let Some(n) = limit {
+                    if history.len() > n {
+                        history.len() - n
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+
                 // Display command history with line numbers
-                for (i, cmd) in history.iter().enumerate() {
-                    let _ = writeln!(stdout, "{:>5}  {}", i + 1, cmd);
+                for (i, cmd) in history[start_idx..].iter().enumerate() {
+                    let _ = writeln!(stdout, "{:>5}  {}", start_idx + i + 1, cmd);
                 }
                 ShellStatus::Continue
             }
