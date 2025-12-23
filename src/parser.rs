@@ -7,6 +7,7 @@
 ///
 /// # Example
 /// ```
+/// use codecrafters_shell::tokenize;
 /// let args = tokenize("echo 'hello world'");
 /// assert_eq!(args, vec!["echo", "hello world"]);
 /// ```

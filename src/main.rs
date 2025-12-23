@@ -35,24 +35,40 @@ fn main() -> io::Result<()> {
                         break;
                     }
                     Key::Char('\t') => {
-                        let builtins = ["echo", "exit"];
-                        let mut matches = builtins.iter().filter(|cmd| cmd.starts_with(&buffer));
+                        // Collect all possible completions: builtins and executables
+                        let builtins = ["echo", "exit", "type", "pwd", "cd"];
+                        let mut all_commands: Vec<String> = builtins
+                            .iter()
+                            .filter(|cmd| cmd.starts_with(&buffer))
+                            .map(|s| s.to_string())
+                            .collect();
 
-                        let first = matches.next();
-                        let second = matches.next();
+                        // Add executables from PATH
+                        let executables = codecrafters_shell::get_all_executables();
+                        all_commands.extend(
+                            executables
+                                .into_iter()
+                                .filter(|cmd| cmd.starts_with(&buffer)),
+                        );
 
-                        if let Some(cmd) = first {
-                            if second.is_none() {
-                                let remainder = &cmd[buffer.len()..];
-                                write!(stdout, "{} ", remainder)?;
-                                buffer.push_str(remainder);
-                                buffer.push(' ');
-                                stdout.flush()?;
-                            } else {
-                                write!(stdout, "\x07")?;
-                                stdout.flush()?;
-                            }
+                        // Remove duplicates and sort
+                        all_commands.sort();
+                        all_commands.dedup();
+
+                        if all_commands.len() == 1 {
+                            // Single match: complete it
+                            let cmd = &all_commands[0];
+                            let remainder = &cmd[buffer.len()..];
+                            write!(stdout, "{} ", remainder)?;
+                            buffer.push_str(remainder);
+                            buffer.push(' ');
+                            stdout.flush()?;
+                        } else if all_commands.is_empty() {
+                            // No matches: beep
+                            write!(stdout, "\x07")?;
+                            stdout.flush()?;
                         } else {
+                            // Multiple matches: beep (could also display them, but spec says beep)
                             write!(stdout, "\x07")?;
                             stdout.flush()?;
                         }

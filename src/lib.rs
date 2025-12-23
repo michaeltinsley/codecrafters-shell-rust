@@ -127,3 +127,27 @@ pub(crate) fn get_executable_path(command: &str) -> Option<PathBuf> {
     }
     None
 }
+
+/// Gets all executable names from directories in the system `PATH`.
+///
+/// Returns a vector of executable names (not full paths).
+/// Handles non-existent directories gracefully.
+pub fn get_all_executables() -> Vec<String> {
+    let mut executables = Vec::new();
+
+    if let Ok(path_var) = env::var("PATH") {
+        for path in env::split_paths(&path_var) {
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                for entry in entries.flatten() {
+                    if let Ok(metadata) = entry.metadata()
+                        && metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+                            && let Some(name) = entry.file_name().to_str() {
+                                executables.push(name.to_string());
+                            }
+                }
+            }
+        }
+    }
+
+    executables
+}
