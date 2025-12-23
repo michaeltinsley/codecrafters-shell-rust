@@ -16,6 +16,9 @@ fn main() -> io::Result<()> {
         let mut stdout = io::stdout().into_raw_mode()?;
         let stdin = io::stdin();
         let mut buffer = String::new();
+        let mut last_was_tab = false;
+        let mut last_tab_matches: Vec<String> = Vec::new();
+        let mut last_tab_buffer = String::new();
 
         for c in stdin.keys() {
             match c {
@@ -63,14 +66,32 @@ fn main() -> io::Result<()> {
                             buffer.push_str(remainder);
                             buffer.push(' ');
                             stdout.flush()?;
+                            last_was_tab = false;
                         } else if all_commands.is_empty() {
                             // No matches: beep
                             write!(stdout, "\x07")?;
                             stdout.flush()?;
+                            last_was_tab = false;
                         } else {
-                            // Multiple matches: beep (could also display them, but spec says beep)
-                            write!(stdout, "\x07")?;
-                            stdout.flush()?;
+                            // Multiple matches
+                            if last_was_tab
+                                && buffer == last_tab_buffer
+                                && !last_tab_matches.is_empty()
+                            {
+                                // Second tab: display all matches
+                                write!(stdout, "\r\n")?;
+                                write!(stdout, "{}\r\n", last_tab_matches.join("  "))?;
+                                write!(stdout, "$ {}", buffer)?;
+                                stdout.flush()?;
+                                last_was_tab = false;
+                            } else {
+                                // First tab: beep and store matches
+                                write!(stdout, "\x07")?;
+                                stdout.flush()?;
+                                last_was_tab = true;
+                                last_tab_matches = all_commands;
+                                last_tab_buffer = buffer.clone();
+                            }
                         }
                     }
                     Key::Backspace => {
@@ -80,13 +101,17 @@ fn main() -> io::Result<()> {
                             write!(stdout, "\x08 \x08")?;
                             stdout.flush()?;
                         }
+                        last_was_tab = false;
                     }
                     Key::Char(c) => {
                         buffer.push(c);
                         write!(stdout, "{}", c)?;
                         stdout.flush()?;
+                        last_was_tab = false;
                     }
-                    _ => {}
+                    _ => {
+                        last_was_tab = false;
+                    }
                 },
                 Err(e) => {
                     eprintln!("Error reading input: {}", e);
