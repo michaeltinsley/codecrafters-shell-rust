@@ -35,6 +35,17 @@ fn main() -> io::Result<()> {
     let mut command_history: Vec<String> = Vec::new();
     let mut last_saved_index: usize = 0;
 
+    // Load history from HISTFILE environment variable if it exists
+    if let Ok(histfile) = std::env::var("HISTFILE")
+        && let Ok(file) = std::fs::File::open(&histfile)
+    {
+        use std::io::{BufRead, BufReader};
+        let reader = BufReader::new(file);
+        for line in reader.lines().map_while(Result::ok) {
+            command_history.push(line);
+        }
+    }
+
     loop {
         print!("$ ");
         io::stdout().flush()?;
