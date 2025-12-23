@@ -1,6 +1,6 @@
 use crate::ShellStatus;
 use crate::get_executable_path;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::str::FromStr;
 
@@ -109,6 +109,34 @@ impl Builtin {
                         }
                     } else {
                         let _ = writeln!(stderr, "history: -r requires a filename argument");
+                        return ShellStatus::Continue;
+                    }
+                }
+
+                // Check for -a flag to append to file
+                if args.first().map(|s| s.as_str()) == Some("-a") {
+                    if let Some(filepath) = args.get(1) {
+                        match OpenOptions::new().create(true).append(true).open(filepath) {
+                            Ok(mut file) => {
+                                for cmd in history {
+                                    if let Err(e) = writeln!(file, "{}", cmd) {
+                                        let _ = writeln!(
+                                            stderr,
+                                            "history: error appending to {}: {}",
+                                            filepath, e
+                                        );
+                                        return ShellStatus::Continue;
+                                    }
+                                }
+                                return ShellStatus::Continue;
+                            }
+                            Err(e) => {
+                                let _ = writeln!(stderr, "history: {}: {}", filepath, e);
+                                return ShellStatus::Continue;
+                            }
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "history: -a requires a filename argument");
                         return ShellStatus::Continue;
                     }
                 }
