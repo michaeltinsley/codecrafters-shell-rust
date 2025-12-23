@@ -41,6 +41,7 @@ impl Builtin {
         mut stdout: W,
         mut stderr: E,
         history: &[String],
+        last_saved_index: usize,
     ) -> ShellStatus {
         match self {
             Builtin::Exit => {
@@ -118,7 +119,8 @@ impl Builtin {
                     if let Some(filepath) = args.get(1) {
                         match OpenOptions::new().create(true).append(true).open(filepath) {
                             Ok(mut file) => {
-                                for cmd in history {
+                                // Only append entries that haven't been saved yet
+                                for cmd in history.iter().skip(last_saved_index) {
                                     if let Err(e) = writeln!(file, "{}", cmd) {
                                         let _ = writeln!(
                                             stderr,
@@ -128,7 +130,7 @@ impl Builtin {
                                         return ShellStatus::Continue;
                                     }
                                 }
-                                return ShellStatus::Continue;
+                                return ShellStatus::HistorySaved(history.len());
                             }
                             Err(e) => {
                                 let _ = writeln!(stderr, "history: {}: {}", filepath, e);
@@ -156,7 +158,7 @@ impl Builtin {
                                         return ShellStatus::Continue;
                                     }
                                 }
-                                return ShellStatus::Continue;
+                                return ShellStatus::HistorySaved(history.len());
                             }
                             Err(e) => {
                                 let _ = writeln!(stderr, "history: {}: {}", filepath, e);

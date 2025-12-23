@@ -33,6 +33,7 @@ fn longest_common_prefix(strings: &[String]) -> String {
 
 fn main() -> io::Result<()> {
     let mut command_history: Vec<String> = Vec::new();
+    let mut last_saved_index: usize = 0;
 
     loop {
         print!("$ ");
@@ -243,6 +244,10 @@ fn main() -> io::Result<()> {
                     command_history.extend(entries);
                     continue;
                 }
+                ShellStatus::HistorySaved(index) => {
+                    last_saved_index = index;
+                    continue;
+                }
                 ShellStatus::Continue => continue,
             }
         }
@@ -254,10 +259,19 @@ fn main() -> io::Result<()> {
         };
         let args: Vec<String> = parts.collect();
 
-        match codecrafters_shell::handle_command(&command_str, args, &command_history) {
+        match codecrafters_shell::handle_command(
+            &command_str,
+            args,
+            &command_history,
+            last_saved_index,
+        ) {
             ShellStatus::Exit(code) => process::exit(code),
             ShellStatus::LoadHistory(entries) => {
                 command_history.extend(entries);
+                continue;
+            }
+            ShellStatus::HistorySaved(index) => {
+                last_saved_index = index;
                 continue;
             }
             ShellStatus::Continue => continue,
