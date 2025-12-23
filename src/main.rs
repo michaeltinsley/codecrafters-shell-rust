@@ -63,7 +63,7 @@ fn main() -> io::Result<()> {
                     }
                     Key::Char('\t') => {
                         // Collect all possible completions: builtins and executables
-                        let builtins = ["echo", "exit", "type", "pwd", "cd"];
+                        let builtins = ["echo", "exit", "type", "pwd", "cd", "history"];
                         let mut all_commands: Vec<String> = builtins
                             .iter()
                             .filter(|cmd| cmd.starts_with(&buffer))

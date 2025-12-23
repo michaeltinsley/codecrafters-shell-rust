@@ -10,6 +10,7 @@ pub enum Builtin {
     Type,
     Pwd,
     Cd,
+    History,
 }
 
 impl FromStr for Builtin {
@@ -22,6 +23,7 @@ impl FromStr for Builtin {
             "type" => Ok(Builtin::Type),
             "pwd" => Ok(Builtin::Pwd),
             "cd" => Ok(Builtin::Cd),
+            "history" => Ok(Builtin::History),
             _ => Err(()),
         }
     }
@@ -83,6 +85,11 @@ impl Builtin {
                         let _ = writeln!(stderr, "cd: no such file or directory: {}", new_dir);
                     }
                 }
+                ShellStatus::Continue
+            }
+            Builtin::History => {
+                // History command - for now, just a placeholder
+                // The actual history tracking would be implemented in the main loop
                 ShellStatus::Continue
             }
         }
