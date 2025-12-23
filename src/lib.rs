@@ -4,6 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::FromRawFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 
 pub mod builtins;
 pub mod parser;
@@ -159,6 +160,7 @@ pub fn get_all_executables() -> Vec<String> {
 ///
 /// Takes the full input string, splits it by '|', and executes the two commands
 /// with the first command's stdout connected to the second command's stdin.
+/// Supports both built-in and external commands.
 pub fn execute_pipeline(input: &str) -> ShellStatus {
     let parts: Vec<&str> = input.split('|').map(|s| s.trim()).collect();
 
@@ -175,10 +177,14 @@ pub fn execute_pipeline(input: &str) -> ShellStatus {
     }
 
     let cmd1 = &cmd1_tokens[0];
-    let args1 = &cmd1_tokens[1..];
+    let args1: Vec<String> = cmd1_tokens[1..].to_vec();
 
     let cmd2 = &cmd2_tokens[0];
-    let args2 = &cmd2_tokens[1..];
+    let args2: Vec<String> = cmd2_tokens[1..].to_vec();
+
+    // Check if commands are built-ins
+    let cmd1_is_builtin = Builtin::from_str(cmd1).is_ok();
+    let cmd2_is_builtin = Builtin::from_str(cmd2).is_ok();
 
     // Create a pipe
     let (pipe_read_fd, pipe_write_fd) = unsafe {
@@ -190,45 +196,130 @@ pub fn execute_pipeline(input: &str) -> ShellStatus {
         (fds[0], fds[1])
     };
 
-    // Spawn first command with stdout redirected to pipe write end
-    let mut child1 = match Command::new(cmd1)
-        .args(args1)
-        .stdout(unsafe { Stdio::from_raw_fd(pipe_write_fd) })
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            eprintln!("{}: error executing command: {}", cmd1, e);
-            unsafe {
-                libc::close(pipe_read_fd);
-                libc::close(pipe_write_fd);
+    // Spawn/execute first command
+    let pid1 = if cmd1_is_builtin {
+        execute_builtin_in_pipeline(cmd1, args1, None, Some(pipe_write_fd))
+    } else {
+        match Command::new(cmd1)
+            .args(&args1)
+            .stdout(unsafe { Stdio::from_raw_fd(pipe_write_fd) })
+            .spawn()
+        {
+            Ok(child) => {
+                // Close pipe_write_fd in parent since child now owns it
+                child.id() as i32
             }
-            return ShellStatus::Continue;
+            Err(e) => {
+                eprintln!("{}: error executing command: {}", cmd1, e);
+                unsafe {
+                    libc::close(pipe_read_fd);
+                    libc::close(pipe_write_fd);
+                }
+                return ShellStatus::Continue;
+            }
         }
     };
 
-    // Spawn second command with stdin redirected from pipe read end
-    let mut child2 = match Command::new(cmd2)
-        .args(args2)
-        .stdin(unsafe { Stdio::from_raw_fd(pipe_read_fd) })
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            eprintln!("{}: error executing command: {}", cmd2, e);
-            unsafe {
-                libc::close(pipe_read_fd);
+    // Spawn/execute second command
+    let pid2 = if cmd2_is_builtin {
+        execute_builtin_in_pipeline(cmd2, args2, Some(pipe_read_fd), None)
+    } else {
+        match Command::new(cmd2)
+            .args(&args2)
+            .stdin(unsafe { Stdio::from_raw_fd(pipe_read_fd) })
+            .spawn()
+        {
+            Ok(child) => {
+                // Close pipe_read_fd in parent since child now owns it
+                child.id() as i32
             }
-            // Kill first child if second fails to spawn
-            let _ = child1.kill();
-            let _ = child1.wait();
-            return ShellStatus::Continue;
+            Err(e) => {
+                eprintln!("{}: error executing command: {}", cmd2, e);
+                unsafe {
+                    libc::close(pipe_read_fd);
+                }
+                return ShellStatus::Continue;
+            }
         }
     };
 
-    // Wait for both commands to complete
-    let _ = child1.wait();
-    let _ = child2.wait();
+    // Close pipe fds in parent if not already closed
+    if !cmd1_is_builtin {
+        unsafe { libc::close(pipe_write_fd) };
+    }
+    if !cmd2_is_builtin {
+        unsafe { libc::close(pipe_read_fd) };
+    }
+
+    // Wait for both processes
+    unsafe {
+        let mut status: i32 = 0;
+        libc::waitpid(pid1, &mut status, 0);
+        libc::waitpid(pid2, &mut status, 0);
+    }
 
     ShellStatus::Continue
+}
+
+/// Executes a built-in command in a forked child process with redirected I/O.
+///
+/// Returns the PID of the forked child process.
+fn execute_builtin_in_pipeline(
+    cmd: &str,
+    args: Vec<String>,
+    stdin_fd: Option<i32>,
+    stdout_fd: Option<i32>,
+) -> i32 {
+    unsafe {
+        let pid = libc::fork();
+
+        if pid == 0 {
+            // Child process
+
+            // Redirect stdin if needed
+            if let Some(fd) = stdin_fd {
+                libc::dup2(fd, 0); // stdin
+                libc::close(fd);
+            }
+
+            // Redirect stdout if needed
+            if let Some(fd) = stdout_fd {
+                libc::dup2(fd, 1); // stdout
+                libc::close(fd);
+            }
+
+            // Execute the built-in
+            if let Ok(builtin) = Builtin::from_str(cmd) {
+                use std::io::{stderr, stdout};
+                let mut out = stdout();
+                let mut err = stderr();
+                match builtin.execute(args, &mut out, &mut err) {
+                    ShellStatus::Exit(code) => std::process::exit(code),
+                    ShellStatus::Continue => std::process::exit(0),
+                }
+            }
+
+            std::process::exit(1);
+        } else if pid > 0 {
+            // Parent process
+            // Close the fds we passed to child
+            if let Some(fd) = stdin_fd {
+                libc::close(fd);
+            }
+            if let Some(fd) = stdout_fd {
+                libc::close(fd);
+            }
+            pid
+        } else {
+            // Fork failed
+            eprintln!("Failed to fork for built-in command");
+            if let Some(fd) = stdin_fd {
+                libc::close(fd);
+            }
+            if let Some(fd) = stdout_fd {
+                libc::close(fd);
+            }
+            -1
+        }
+    }
 }
