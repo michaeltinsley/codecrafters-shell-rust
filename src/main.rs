@@ -31,6 +31,22 @@ fn longest_common_prefix(strings: &[String]) -> String {
     prefix
 }
 
+/// Saves the history to the HISTFILE if the environment variable is set.
+fn save_history_to_file(history: &[String]) {
+    if let Ok(histfile) = std::env::var("HISTFILE")
+        && let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&histfile)
+    {
+        use std::io::Write;
+        for cmd in history {
+            let _ = writeln!(file, "{}", cmd);
+        }
+    }
+}
+
 fn main() -> io::Result<()> {
     let mut command_history: Vec<String> = Vec::new();
     let mut last_saved_index: usize = 0;
@@ -69,6 +85,7 @@ fn main() -> io::Result<()> {
                     }
                     Key::Ctrl('d') => {
                         if buffer.is_empty() {
+                            save_history_to_file(&command_history);
                             return Ok(());
                         }
                     }
@@ -250,7 +267,10 @@ fn main() -> io::Result<()> {
         // Check if this is a pipeline command
         if input_string.contains('|') {
             match codecrafters_shell::execute_pipeline(&input_string) {
-                ShellStatus::Exit(code) => process::exit(code),
+                ShellStatus::Exit(code) => {
+                    save_history_to_file(&command_history);
+                    process::exit(code)
+                }
                 ShellStatus::LoadHistory(entries) => {
                     command_history.extend(entries);
                     continue;
@@ -276,7 +296,10 @@ fn main() -> io::Result<()> {
             &command_history,
             last_saved_index,
         ) {
-            ShellStatus::Exit(code) => process::exit(code),
+            ShellStatus::Exit(code) => {
+                save_history_to_file(&command_history);
+                process::exit(code)
+            }
             ShellStatus::LoadHistory(entries) => {
                 command_history.extend(entries);
                 continue;
