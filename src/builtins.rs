@@ -113,6 +113,34 @@ impl Builtin {
                     }
                 }
 
+                // Check for -w flag to write to file
+                if args.first().map(|s| s.as_str()) == Some("-w") {
+                    if let Some(filepath) = args.get(1) {
+                        match File::create(filepath) {
+                            Ok(mut file) => {
+                                for cmd in history {
+                                    if let Err(e) = writeln!(file, "{}", cmd) {
+                                        let _ = writeln!(
+                                            stderr,
+                                            "history: error writing to {}: {}",
+                                            filepath, e
+                                        );
+                                        return ShellStatus::Continue;
+                                    }
+                                }
+                                return ShellStatus::Continue;
+                            }
+                            Err(e) => {
+                                let _ = writeln!(stderr, "history: {}: {}", filepath, e);
+                                return ShellStatus::Continue;
+                            }
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "history: -w requires a filename argument");
+                        return ShellStatus::Continue;
+                    }
+                }
+
                 // Parse optional limit argument
                 let limit = args.first().and_then(|n_str| n_str.parse::<usize>().ok());
 
