@@ -140,10 +140,12 @@ pub fn get_all_executables() -> Vec<String> {
             if let Ok(entries) = std::fs::read_dir(&path) {
                 for entry in entries.flatten() {
                     if let Ok(metadata) = entry.metadata()
-                        && metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                            && let Some(name) = entry.file_name().to_str() {
-                                executables.push(name.to_string());
-                            }
+                        && metadata.is_file()
+                        && metadata.permissions().mode() & 0o111 != 0
+                        && let Some(name) = entry.file_name().to_str()
+                    {
+                        executables.push(name.to_string());
+                    }
                 }
             }
         }

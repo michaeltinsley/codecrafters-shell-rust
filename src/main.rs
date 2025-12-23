@@ -7,6 +7,30 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
+/// Calculates the longest common prefix of a list of strings.
+fn longest_common_prefix(strings: &[String]) -> String {
+    if strings.is_empty() {
+        return String::new();
+    }
+
+    if strings.len() == 1 {
+        return strings[0].clone();
+    }
+
+    let first = &strings[0];
+    let mut prefix = String::new();
+
+    for (i, ch) in first.chars().enumerate() {
+        if strings.iter().all(|s| s.chars().nth(i) == Some(ch)) {
+            prefix.push(ch);
+        } else {
+            break;
+        }
+    }
+
+    prefix
+}
+
 fn main() -> io::Result<()> {
     loop {
         print!("$ ");
@@ -59,7 +83,7 @@ fn main() -> io::Result<()> {
                         all_commands.dedup();
 
                         if all_commands.len() == 1 {
-                            // Single match: complete it
+                            // Single match: complete it with trailing space
                             let cmd = &all_commands[0];
                             let remainder = &cmd[buffer.len()..];
                             write!(stdout, "{} ", remainder)?;
@@ -73,24 +97,36 @@ fn main() -> io::Result<()> {
                             stdout.flush()?;
                             last_was_tab = false;
                         } else {
-                            // Multiple matches
-                            if last_was_tab
-                                && buffer == last_tab_buffer
-                                && !last_tab_matches.is_empty()
-                            {
-                                // Second tab: display all matches
-                                write!(stdout, "\r\n")?;
-                                write!(stdout, "{}\r\n", last_tab_matches.join("  "))?;
-                                write!(stdout, "$ {}", buffer)?;
+                            // Multiple matches: try LCP completion
+                            let lcp = longest_common_prefix(&all_commands);
+
+                            if lcp.len() > buffer.len() {
+                                // We can complete more - complete to LCP without space
+                                let remainder = &lcp[buffer.len()..];
+                                write!(stdout, "{}", remainder)?;
+                                buffer.push_str(remainder);
                                 stdout.flush()?;
                                 last_was_tab = false;
                             } else {
-                                // First tab: beep and store matches
-                                write!(stdout, "\x07")?;
-                                stdout.flush()?;
-                                last_was_tab = true;
-                                last_tab_matches = all_commands;
-                                last_tab_buffer = buffer.clone();
+                                // LCP equals buffer - can't complete further
+                                if last_was_tab
+                                    && buffer == last_tab_buffer
+                                    && !last_tab_matches.is_empty()
+                                {
+                                    // Second tab: display all matches
+                                    write!(stdout, "\r\n")?;
+                                    write!(stdout, "{}\r\n", last_tab_matches.join("  "))?;
+                                    write!(stdout, "$ {}", buffer)?;
+                                    stdout.flush()?;
+                                    last_was_tab = false;
+                                } else {
+                                    // First tab: beep and store matches
+                                    write!(stdout, "\x07")?;
+                                    stdout.flush()?;
+                                    last_was_tab = true;
+                                    last_tab_matches = all_commands;
+                                    last_tab_buffer = buffer.clone();
+                                }
                             }
                         }
                     }
