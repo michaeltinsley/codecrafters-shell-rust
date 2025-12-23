@@ -1,6 +1,7 @@
 use crate::ShellStatus;
 use crate::get_executable_path;
-use std::io::Write;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
 use std::str::FromStr;
 
 /// Enumeration of all supported builtin commands.
@@ -89,6 +90,29 @@ impl Builtin {
                 ShellStatus::Continue
             }
             Builtin::History => {
+                // Check for -r flag to read from file
+                if args.first().map(|s| s.as_str()) == Some("-r") {
+                    if let Some(filepath) = args.get(1) {
+                        match File::open(filepath) {
+                            Ok(file) => {
+                                let reader = BufReader::new(file);
+                                let mut loaded_history = Vec::new();
+                                for cmd in reader.lines().flatten() {
+                                    loaded_history.push(cmd);
+                                }
+                                return ShellStatus::LoadHistory(loaded_history);
+                            }
+                            Err(e) => {
+                                let _ = writeln!(stderr, "history: {}: {}", filepath, e);
+                                return ShellStatus::Continue;
+                            }
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "history: -r requires a filename argument");
+                        return ShellStatus::Continue;
+                    }
+                }
+
                 // Parse optional limit argument
                 let limit = args.first().and_then(|n_str| n_str.parse::<usize>().ok());
 

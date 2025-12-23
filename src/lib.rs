@@ -18,6 +18,8 @@ pub enum ShellStatus {
     Continue,
     /// The shell should exit with the provided code.
     Exit(i32),
+    /// Load history from the provided entries.
+    LoadHistory(Vec<String>),
 }
 
 /// Orchestrates command execution.
@@ -337,6 +339,7 @@ fn execute_builtin_in_pipeline(
                 match builtin.execute(args, &mut out, &mut err, &[]) {
                     ShellStatus::Exit(code) => std::process::exit(code),
                     ShellStatus::Continue => std::process::exit(0),
+                    ShellStatus::LoadHistory(_) => std::process::exit(0), // Can't load history in forked process
                 }
             }
 

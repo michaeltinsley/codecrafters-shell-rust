@@ -239,6 +239,10 @@ fn main() -> io::Result<()> {
         if input_string.contains('|') {
             match codecrafters_shell::execute_pipeline(&input_string) {
                 ShellStatus::Exit(code) => process::exit(code),
+                ShellStatus::LoadHistory(entries) => {
+                    command_history.extend(entries);
+                    continue;
+                }
                 ShellStatus::Continue => continue,
             }
         }
@@ -252,6 +256,10 @@ fn main() -> io::Result<()> {
 
         match codecrafters_shell::handle_command(&command_str, args, &command_history) {
             ShellStatus::Exit(code) => process::exit(code),
+            ShellStatus::LoadHistory(entries) => {
+                command_history.extend(entries);
+                continue;
+            }
             ShellStatus::Continue => continue,
         }
     }
